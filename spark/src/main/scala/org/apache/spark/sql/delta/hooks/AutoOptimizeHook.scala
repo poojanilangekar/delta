@@ -20,16 +20,16 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.delta.{DeltaErrors, OptimisticTransactionImpl, Snapshot}
 import org.apache.spark.sql.delta.actions.{Action, AddFile}
 import org.apache.spark.sql.delta.commands.{DeltaOptimizeContext, OptimizeExecutor}
-import org.apache.spark.sql.delta.util.DeltaLogging
+import org.apache.spark.sql.delta.metering.DeltaLogging
 
 object AutoOptimizeHook extends PostCommitHook
-    with DeltaLogging 
+    with DeltaLogging
     with Serializable {
 
     override val name: String = "Triggers auto optimize after each commit, if necessary"
 
     override def run(
-        spark: SparkSession, 
+        spark: SparkSession,
         txn: OptimisticTransactionImpl,
         committedVersion: Long,
         postCommitSnapshot: Snapshot,
@@ -38,11 +38,13 @@ object AutoOptimizeHook extends PostCommitHook
             val newTxn = txn.deltaLog.startTransaction()
             val addedFiles = committedActions.collect { case a: AddFile => a }
             if (addedFiles.nonEmpty) {
-                new OptimizeExecutor (spark, newTxn, Seq.empty, DeltaOptimizeContext(isAuto = true))
+                new OptimizeExecutor (
+                    spark, newTxn, Seq.empty, Seq.empty, DeltaOptimizeContext(
+                        isAutoOptimize = true))
                     .autoOptimize(addedFiles)
             }
         }
-    
+
     override def handleError(error: Throwable, version: Long): Unit = {
         throw DeltaErrors.postCommitHookFailedException(this, version, name, error)
     }

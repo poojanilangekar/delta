@@ -1068,10 +1068,10 @@ trait OptimisticTransactionImpl extends TransactionalWrite
       // For autoOptimize, session config is prior to table property.
       lazy val autoOptimizeEnabled =
         spark.sessionState.conf
-          .getConf(DeltaSQLConf.AUTO_OPTIMIZE_ENABLED)
+          .getConf(DeltaSQLConf.DELTA_AUTO_OPTIMIZE_ENABLED)
           .getOrElse {
-            DeltaConfigs.AUTO_OPTIMIZE.fromMetaData(metadata)}
-      
+            DeltaConfigs.AUTO_OPTIMIZE.fromMetaData(metadata).getOrElse(false)}
+
       if (!op.isInstanceOf[DeltaOperations.Optimize] && autoOptimizeEnabled && hasFileActions) {
         registerPostCommitHook(AutoOptimizeHook)
       }

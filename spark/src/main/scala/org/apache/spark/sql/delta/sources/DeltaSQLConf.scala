@@ -859,12 +859,12 @@ trait DeltaSQLConfBase {
       .booleanConf
       .createWithDefault(false)
 
-  val DELTA_AUTO_OPTIMIZE_ENABLED = 
+  val DELTA_AUTO_OPTIMIZE_ENABLED =
     buildConf("autoOptimize.enabled")
       .internal()
       .doc("If enabled, optimize is triggered after every commit to the table.")
       .booleanConf
-      .createWithDefault(false)
+      .createOptional
 
   val DELTA_AUTO_OPTIMIZE_MIN_FILE_SIZE =
     buildConf("autoOptimize.minFileSize")
@@ -874,7 +874,7 @@ trait DeltaSQLConfBase {
       .checkValue(_ >= 0, "minFileSize has to be positive")
       .createWithDefault(1024 * 1024 * 1024)
 
-  val DELTA_AUTO_OPTIMIZE_MAX_FILE_SIZE = 
+  val DELTA_AUTO_OPTIMIZE_MAX_FILE_SIZE =
     buildConf("autoOptimize.maxFileSize")
       .internal()
       .doc("Target file size (in bytes) to be produced by auto optimize.")
@@ -890,14 +890,14 @@ trait DeltaSQLConfBase {
       .checkValue(_ >= 0, "minNumFiles has to be positive")
       .createWithDefault(10)
 
-  val DELTA_AUTO_OPTIMIZE_MAX_COMPACT_BYTES = 
+  val DELTA_AUTO_OPTIMIZE_MAX_COMPACT_BYTES =
     buildConf("autoOptimize.maxCompactBytes")
     .internal()
     .doc("Maximum number of bytes to be compacted by auto optimize.")
     .bytesConf(ByteUnit.BYTE)
-    .createWithDefault("20GB")
+    .createWithDefaultString("20GB")
 
-  val DELTA_AUTO_OPTIMIZE_TARGET = 
+  val DELTA_AUTO_OPTIMIZE_TARGET =
     buildConf("autoOptimize.target")
       .internal()
       .doc(
@@ -910,6 +910,7 @@ trait DeltaSQLConfBase {
           |  by the commit are eligible.
           |""".stripMargin
       )
+      .stringConf
       .transform(_.toLowerCase(Locale.ROOT))
       .checkValues(Set("table", "commit", "partition"))
       .createWithDefault("partition")
