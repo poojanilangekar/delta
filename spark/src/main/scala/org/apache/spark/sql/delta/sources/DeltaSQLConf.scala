@@ -859,6 +859,62 @@ trait DeltaSQLConfBase {
       .booleanConf
       .createWithDefault(false)
 
+  val DELTA_AUTO_OPTIMIZE_ENABLED =
+    buildConf("autoOptimize.enabled")
+      .internal()
+      .doc("If enabled, optimize is triggered after every commit to the table.")
+      .booleanConf
+      .createOptional
+
+  val DELTA_AUTO_OPTIMIZE_MIN_FILE_SIZE =
+    buildConf("autoOptimize.minFileSize")
+      .internal()
+      .doc("Minimum file size (in bytes) to trigger auto optimize.")
+      .longConf
+      .checkValue(_ >= 0, "minFileSize has to be positive")
+      .createWithDefault(1024 * 1024 * 1024)
+
+  val DELTA_AUTO_OPTIMIZE_MAX_FILE_SIZE =
+    buildConf("autoOptimize.maxFileSize")
+      .internal()
+      .doc("Target file size (in bytes) to be produced by auto optimize.")
+      .longConf
+      .checkValue(_ >= 0, "maxFileSize has to be positive")
+      .createWithDefault(1024 * 1024 * 1024)
+
+  val DELTA_AUTO_OPTIMIZE_MIN_NUM_FILES =
+    buildConf("autoOptimize.minNumFiles")
+      .internal()
+      .doc("Minimum number of files to trigger auto optimize.")
+      .longConf
+      .checkValue(_ >= 0, "minNumFiles has to be positive")
+      .createWithDefault(10)
+
+  val DELTA_AUTO_OPTIMIZE_MAX_COMPACT_BYTES =
+    buildConf("autoOptimize.maxCompactBytes")
+    .internal()
+    .doc("Maximum number of bytes to be compacted by auto optimize.")
+    .bytesConf(ByteUnit.BYTE)
+    .createWithDefaultString("20GB")
+
+  val DELTA_AUTO_OPTIMIZE_TARGET =
+    buildConf("autoOptimize.target")
+      .internal()
+      .doc(
+        """
+          |Target files for auto optimize.
+          | "table", "commit", "partition" options are available. (default: partition)
+          | If "table", all files in table are eligible for auto compaction.
+          | If "commit", added/updated files by the commit are eligible.
+          | If "partition", all files in partitions containing any added/updated files
+          |  by the commit are eligible.
+          |""".stripMargin
+      )
+      .stringConf
+      .transform(_.toLowerCase(Locale.ROOT))
+      .checkValues(Set("table", "commit", "partition"))
+      .createWithDefault("partition")
+
   val DELTA_ALTER_TABLE_CHANGE_COLUMN_CHECK_EXPRESSIONS =
     buildConf("alterTable.changeColumn.checkExpressions")
       .internal()
