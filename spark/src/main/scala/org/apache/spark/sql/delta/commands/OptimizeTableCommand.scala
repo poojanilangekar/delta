@@ -218,6 +218,7 @@ class OptimizeExecutor(
 
   private val isMultiDimClustering = zOrderByColumns.nonEmpty
 
+  /** Function to autoOptimize a table based on file entropy threshold. */
   def autoOptimize(prevCommitAddFiles: Seq[AddFile]): Unit = {
     val minFileSize = sparkSession.sessionState.conf.getConf(
       DeltaSQLConf.DELTA_AUTO_OPTIMIZE_MIN_FILE_SIZE)
@@ -226,22 +227,17 @@ class OptimizeExecutor(
     require(minFileSize > 0, "minFileSize must be greater than 0")
     require(maxFileSize > 0, "maxFileSize must be greater than 0")
 
-    val autoOptimizeTarget = sparkSession.sessionState.conf.getConf(
-      DeltaSQLConf.DELTA_AUTO_OPTIMIZE_TARGET)
+    val autoOptimizeThreshold = sparkSession.sessionState.conf.getConf(
+      DeltaSQLConf.DELTA_AUTO_OPTIMIZE_THRESHOLD)
+    require(autoOptimizeThreshold > 0, "DELTA_AUTO_OPTIMIZE_THRESHOLD must be greater than 0")
 
     // Filter the candidate files based on autoOptimize.target config
     lazy val addedFiles = prevCommitAddFiles.collect {case a: AddFile => a}
-    val candidateFiles = autoOptimizeTarget match {
-      case "table" => txn.filterFiles()
-      case "commit" => addedFiles
-      case "partition" =>
-        val eligiblePartitions = addedFiles.map(_.partitionValues).toSet
-        txn.filterFiles().filter(f => eligiblePartitions.contains(f.partitionValues))
-      case _ =>
-        logError(s"Invalid config for autoOptimize.target: $autoOptimizeTarget. "
-          + s"Falling back to the default value autoOptimize.target = 'table'.")
-        txn.filterFiles()
-    }
+    val eligiblePartitions = addedFiles.map(_.partitionValues).toSet
+    val candidatePartitions = txn.filterFiles().filter(
+      f => eligiblePartitions.contains(f.partitionValues)).groupBy(_.partitionValues).toSeq
+    val candidateFiles = pruneParitions(candidatePartitions, maxFileSize, autoOptimizeThreshold)
+
     optimizeImpl(minFileSize, maxFileSize, candidateFiles)
   }
 
@@ -336,6 +332,27 @@ class OptimizeExecutor(
     }
   }
 
+    private def pruneParitions(partitionsToCompact: Seq[(Map[String, String], Seq[AddFile])],
+    targetFileSize: Long, fileSizeEntropyThreshold: Long) : Seq[AddFile] = {
+      var candidateFiles = new ArrayBuffer[AddFile]()
+      partitionsToCompact.foreach {
+        case (partition, files) =>
+          val numFiles = files.size
+          var fileSizeEntropy = 0L
+          val smallFiles = files.filter(_.size < targetFileSize)
+          smallFiles.foreach {
+            file =>
+            val currentEntropy = (((targetFileSize - file.size) * (targetFileSize - file.size))
+             / numFiles).toLong
+            fileSizeEntropy += currentEntropy
+          }
+          if (fileSizeEntropy > fileSizeEntropyThreshold) {
+            candidateFiles.appendAll(smallFiles)
+          }
+      }
+      candidateFiles
+  }
+
   /**
    * Helper method to prune the list of selected files based on fileSize and ratio of
    * deleted rows according to the deletion vector in [[AddFile]].
@@ -399,36 +416,11 @@ class OptimizeExecutor(
           bins += currentBin.toVector
         }
 
-        if (!optimizeContext.isAutoOptimize) {
-          bins.filter { bin =>
-            bin.size > 1 || // bin has more than one file or
-            (bin.size == 1 && bin(0).deletionVector != null) || // single file in the bin has a DV
-            isMultiDimClustering // or multi-clustering
-          }.map(b => (partition, b))
-        } else {
-          // For AutoOptimize
-          val autoCompactMinNumFiles = sparkSession.sessionState.conf.getConf(
-            DeltaSQLConf.DELTA_AUTO_OPTIMIZE_MIN_NUM_FILES)
-          val filteredByBinSize = bins.filter {
-            // bin size is greater than or equal to autoCompactMinNumFiles files
-            bin => bin.size >= autoCompactMinNumFiles ||
-            // or bin size + number of deletion vectors is greater than or equal to
-            // autoCompactMinNumFiles files
-            bin.count(_.deletionVector != null) + bin.size >= autoCompactMinNumFiles
-          }.map(b => (partition, b))
-
-          var acc = 0L
-          val maxCompactBytes = sparkSession.sessionState.conf.getConf(
-            DeltaSQLConf.DELTA_AUTO_OPTIMIZE_MAX_COMPACT_BYTES)
-
-          // Bins with more files have a higher priority than bins with fewer files
-          filteredByBinSize
-            .sortBy { case (_, filesInBin) => -filesInBin.length }
-            .takeWhile { case (_, filesInBin) =>
-              acc += filesInBin.map(_.size).sum
-              acc <= maxCompactBytes
-            }
-        }
+        bins.filter { bin =>
+          bin.size > 1 || // bin has more than one file or
+          (bin.size == 1 && bin(0).deletionVector != null) || // single file in the bin has a DV
+          isMultiDimClustering // or multi-clustering
+        }.map(b => (partition, b))
     }
   }
 

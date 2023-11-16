@@ -39,8 +39,8 @@ object AutoOptimizeHook extends PostCommitHook
             val addedFiles = committedActions.collect { case a: AddFile => a }
             if (addedFiles.nonEmpty) {
                 new OptimizeExecutor (
-                    spark, newTxn, Seq.empty, Seq.empty, DeltaOptimizeContext(
-                        isAutoOptimize = true))
+                    spark, newTxn, Seq.empty, Seq.empty,
+                    DeltaOptimizeContext(isAutoOptimize = true))
                     .autoOptimize(addedFiles)
             }
         }
